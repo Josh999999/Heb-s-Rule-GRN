@@ -10,6 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
 module load conda/python3
+source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate "${ENV_NAME:-grn}" || {
     echo "ERROR: environment not active. Run:  source ./_setup.sh" >&2
     exit 1

@@ -15,7 +15,10 @@
 # Pure NumPy, so no GPU is requested; CPU partitions queue faster.
 
 module load conda/python3
-conda activate ${ENV_NAME:-grn}
+
+# Define the `conda activate` shell function (module load alone does not).
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate "${ENV_NAME:-grn}"
 
 cd "${SLURM_SUBMIT_DIR:-$(dirname "$0")}"
 
