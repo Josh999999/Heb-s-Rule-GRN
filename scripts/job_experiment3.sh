@@ -8,6 +8,9 @@
 #SBATCH --error=out/%x-%j.err
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=jm2e25@soton.ac.uk
+#SBATCH -A ecsstudents
+#SBATCH -p ecsstudents_l4
+#SBATCH --time=24:00:00
 #
 # Run Experiment 3.
 #   mkdir -p out && sbatch job_experiment3.sh
