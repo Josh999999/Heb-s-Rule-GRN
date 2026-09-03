@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 from GRN import sswm_evolve, develop, hamming_dist, tanh_sigma, linear_sigma, random_profiles, sparse_topology
 from plot_experiments import plot_2d_projection
-from Global import SIDE_4, SELECTED_PATTERNS, S1, TARGET_PATTERNS, TARGET, reseed, FOUR_LOOP_PATTERN, ZERO_LOOP_PATTERN, FIGURES_OUTPUT
+from Global import SIDE_4, SELECTED_PATTERNS, S1, TARGET_PATTERNS, reseed, FOUR_LOOP_PATTERN, ZERO_LOOP_PATTERN
 
 
 
@@ -33,6 +33,9 @@ def experiment4(
     # Set the Targets for the experiment
     global TARGETS
     TARGETS = TARGET_PATTERNS
+
+    folder = FIGURES_OUTPUT or "Experiment4"
+    os.makedirs(folder, exist_ok=True)
 
     u1 = mutation_u1 * speedup
     u2 = mutation_u2 * speedup
@@ -68,7 +71,7 @@ def experiment4(
 
     fig.suptitle("Eight target phenotypes (modularly varying environment)", fontsize=9)
     fig.tight_layout()
-    fig.savefig("Figure4A.png", dpi=150)
+    fig.savefig(f"{folder}/Figure4A.png", dpi=150)
     plt.close(fig)
 
 
@@ -90,7 +93,7 @@ def experiment4(
 
     fig.suptitle("100 adult phenotypes produced by the evolved network from random G")
     fig.tight_layout()
-    fig.savefig("Figure4B.png", dpi=150)
+    fig.savefig(f"{folder}/Figure4B.png", dpi=150)
     plt.close(fig)
 
 
@@ -107,7 +110,7 @@ def experiment4(
 
     fig.suptitle("Adult phenotypes produced by a LINEAR developmental process", fontsize=9)
     fig.tight_layout()
-    fig.savefig("Figure4C.png", dpi=150)
+    fig.savefig(f"{folder}/Figure4C.png", dpi=150)
     plt.close(fig)
 
 
@@ -123,7 +126,7 @@ def experiment4(
 
     plot_2d_projection(
         groups = [("target phenotypes", d1_t, d2_t), ("evolved phenotypes", d1_e, d2_e), ("linear mapping", d1_l, d2_l)], 
-        saveloc = "Figure4D.png", 
+        saveloc = f"{folder}/Figure4D.png", 
         title = "D1 = Hamming distance from the 4-loop phenotype, D2 = Hamming distance from the 0-loop phenotype"
     )
 

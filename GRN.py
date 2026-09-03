@@ -156,38 +156,68 @@ def hebbian_interactions(S: np.ndarray, lr: float = 1.0, bin_mask: np.ndarray = 
 
 
 
+def sparse_topology(
+        N: int = None,
+        k: int = 10,
+        self_interaction: bool = False,
+        symmetric: bool = True,
+        combine: str = "union",
+    ) -> np.ndarray:
 
-def sparse_topology(N: int = None, k: int = 10, self_interaction: bool = False) -> tuple[np.ndarray]:
-    if N is None: N = Global.N
-    bin_mask = np.zeros(shape = (N, N), dtype = np.int32)
+    if N is None:
+        N = Global.N
+ 
+    bin_mask = np.zeros((N, N), dtype=bool)
     all_genes = np.arange(N)
-
-
+ 
     for i in range(N):
-
-        if self_interaction:
-            others = Global.RNG.choice(all_genes[all_genes != i], size = k - 1, replace=False)
+        others = Global.RNG.choice(all_genes[all_genes != i], size=k, replace=False)
+        bin_mask[i, others] = True
+ 
+    if symmetric:
+        if combine == "union":
+            bin_mask = bin_mask | bin_mask.T
+        elif combine == "intersection":
+            bin_mask = bin_mask & bin_mask.T
         else:
-            others = Global.RNG.choice(all_genes[all_genes != i], size = k, replace=False)
-
-        
-        bin_mask[i, others] = 1
-
-
+            raise ValueError("combine must be 'union' or 'intersection'")
+ 
+    # Set last so symmetrisation cannot clear it.
+    np.fill_diagonal(bin_mask, bool(self_interaction))
+ 
     return bin_mask
+ 
 
 
+ 
+def diag_mask(N: int = None) -> np.ndarray:
+    
+    if N is None:
+        N = Global.N
+
+    m = np.ones((N, N), dtype=bool)
+
+    np.fill_diagonal(m, False)
+
+    
+    return m
+ 
 
 
-def diag_mask(N: int = None) -> np.ndarray[int]:
-    if N is None: N = Global.N
-    bin_mask_diag = np.ones(shape = (N, N), dtype = np.int32)
-    np.fill_diagonal(bin_mask_diag, 0)
+ 
+def mask_indices(mask: np.ndarray) -> np.ndarray:
+    return np.flatnonzero(np.asarray(mask).ravel())
+ 
 
 
-    return bin_mask_diag
-
-
+ 
+def masked_matrix(mask: np.ndarray, values: np.ndarray = None) -> np.ndarray:
+    mask = np.asarray(mask).astype(bool)
+    B = np.zeros(mask.shape, dtype=float) if values is None \
+        else np.asarray(values, dtype=float).copy()
+    return np.where(mask, B, 0.0)
+ 
+ 
 
 
 def hamming_dist(a: np.ndarray, b: np.ndarray) -> int:
@@ -198,12 +228,13 @@ def hamming_dist(a: np.ndarray, b: np.ndarray) -> int:
 
 
 
+
 def sswm_evolve(
         B: np.ndarray = None,
         S: np.ndarray = None,
         N: int = None,
-        n_generations: int = 200000,
-        sigmoid = tanh_sigma,
+        n_generations: int = 200_000,
+        sigmoid=tanh_sigma,
         t1_coef: float = 1.0,
         t2_coef: float = 0.2,
         dev_time_steps: int = 10,
@@ -215,55 +246,90 @@ def sswm_evolve(
         mask: np.ndarray = None,
         switch_every: int = 2000,
         record_trajectories: bool = True,
+        record_every: int = 1000,
+        symmetric_B: bool = False,
     ) -> tuple:
-
-    # Targets: use the provided set S (single vector or (M, N) array); default to global TARGET.
+ 
     S = Global.TARGET if S is None else S
-    TARGET_ = np.atleast_2d(np.asarray(S, dtype = float))
+    TARGET_ = np.atleast_2d(np.asarray(S, dtype=float))
     M, dimN = TARGET_.shape[:2]
-    N_ = int(N) if N is not None else dimN     # problem size
-
-    if B is None:
-        B = np.zeros((N_, N_))
-
+    N_ = int(N) if N is not None else dimN
+ 
+    if mask is None:
+        mask = diag_mask(N_)
+    mask = np.asarray(mask).astype(bool)
+ 
+    B = masked_matrix(mask) if B is None else masked_matrix(mask, B)
+    B_flat = B.reshape(-1)                       # view, mutated in place
     G = np.zeros(N_)
-
-    interaction_developments = []
-    accepted_gens = []
-    interaction_trajectories = np.empty((N_ * N_, 0))
-
+ 
+    allowed = mask_indices(mask)
+    n_allowed = allowed.size
+ 
+    if symmetric_B and not np.array_equal(mask, mask.T):
+        raise ValueError("symmetric_B=True requires a symmetric mask")
+ 
+    # Precompute the transposed partner of each allowed entry once.
+    if symmetric_B:
+        rows, cols = np.unravel_index(allowed, (N_, N_))
+        partner = cols * N_ + rows               # flat index of (j, i)
+ 
+    def _develop(g):
+        P = np.asarray(g, dtype=float).copy()
+        for _ in range(dev_time_steps):
+            P += t1_coef * sigmoid(B @ P) - t2_coef * P
+        return P
+ 
+    interaction_developments, recorded_gens = [], []
+ 
     ei = int(Global.RNG.integers(M))
-    P = develop(G, B, sigmoid = sigmoid, t1 = t1_coef, t2 = t2_coef, T = dev_time_steps)
+    P = _develop(G)
     w = fitness(P, TARGET_[ei])
-
-
+ 
     for gen in range(n_generations):
-
-        # Paper: a target is "selected uniformly at random" every switch_every generations.
+ 
         if M > 1 and gen > 0 and gen % switch_every == 0:
             ei = int(Global.RNG.integers(M))
             w = fitness(P, TARGET_[ei])
-
-
-        G_mut = mutate_profile(G, u1 = mutation_u1, n_mut = n_mut_G)
-        B_mut = mutate_interactions(B, u2 = mutation_u2, prob_mut = prob_mutB, bin_mask = mask, n_mut = n_mut_B)
-
-        P_mut = develop(G_mut, B_mut, sigmoid = sigmoid, t1 = t1_coef, t2 = t2_coef, T = dev_time_steps)
+ 
+        G_mut = mutate_profile(G, u1=mutation_u1, n_mut=n_mut_G)
+ 
+        # ---- mutate B in place, within the mask, remembering the delta ----
+        undo = None
+        if n_allowed and Global.RNG.random() < prob_mutB:
+            t = Global.RNG.integers(0, n_allowed, size=n_mut_B)
+            deltas = Global.RNG.uniform(-mutation_u2, mutation_u2, size=n_mut_B)
+            idx = allowed[t]
+            np.add.at(B_flat, idx, deltas)
+            if symmetric_B:
+                mirror = partner[t]
+                off = mirror != idx              # skip any diagonal entry
+                np.add.at(B_flat, mirror[off], deltas[off])
+                undo = (idx, mirror[off], deltas, deltas[off])
+            else:
+                undo = (idx, None, deltas, None)
+ 
+        P_mut = _develop(G_mut)
         w_mut = fitness(P_mut, TARGET_[ei])
-
-
+ 
         if w_mut >= w:
-            G, B, P, w = G_mut, B_mut, P_mut, w_mut
-
-
-            if record_trajectories:
-                interaction_developments.append(B.flatten())
-                accepted_gens.append(gen)
-
-
-    if record_trajectories and interaction_developments:
+            G, P, w = G_mut, P_mut, w_mut
+        elif undo is not None:
+            idx, mirror, deltas, mdeltas = undo
+            np.add.at(B_flat, idx, -deltas)
+            if mirror is not None:
+                np.add.at(B_flat, mirror, -mdeltas)
+ 
+        # ---- subsampled recording of masked entries only ----
+        if record_trajectories and (gen % record_every == 0):
+            interaction_developments.append(B_flat[allowed].copy())
+            recorded_gens.append(gen)
+ 
+    if interaction_developments:
         interaction_trajectories = np.array(interaction_developments).T
-        accepted_gens = np.array(accepted_gens)
-
-
-    return G, B, P, w, interaction_trajectories, accepted_gens
+        recorded_gens = np.array(recorded_gens)
+    else:
+        interaction_trajectories = np.empty((n_allowed, 0))
+        recorded_gens = np.array([], dtype=int)
+ 
+    return G, B, P, w, interaction_trajectories, recorded_gens

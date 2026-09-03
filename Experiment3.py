@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from GRN import hamming_dist, tanh_sigma, linear_sigma, random_profiles, sparse_topology, sswm_evolve, develop
 from phenotype_noise import corrupt_progressively, shrinking_patch, interpolate
 from plot_experiments import show_image_strip, plot_2d_projection
-from Global import N, IMAGE_DARWIN_FLAT, TARGET, reseed, SIDE_3, IMAGE_DARWIN, IMAGE_HEB, IMAGE_DARWIN_FLAT, IMAGE_HEB_FLAT, FIGURES_OUTPUT
+from Global import N, IMAGE_DARWIN_FLAT, reseed, SIDE_3, IMAGE_DARWIN, IMAGE_HEB, IMAGE_DARWIN_FLAT, IMAGE_HEB_FLAT, FIGURES_OUTPUT
 
 
 
@@ -228,7 +228,7 @@ if __name__ == "__main__":
     B = np.zeros((N, N)) * mask
 
 
-    # Experiment 1
+    # Experiment 3
     def experiment3_():
         experiment3(
             alpha = B.copy(),
